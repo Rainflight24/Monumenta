@@ -2,8 +2,8 @@
 This interactive script generates a wikipage for a Monumenta item.
 
 It does NOT generate:
-- Alch bags
-- Obtaining and any extra information
+- Obtaining
+- Any extra information not included in the api
 
 (Charms are not supported by the wiki.)
 
@@ -16,7 +16,7 @@ import re
 import requests
 
 # Config:
-CLIPBOARD = True  # Whether to copy the most recent item using pyperclip.
+CLIPBOARD = False  # Whether to copy the most recent item using pyperclip.
 MAX_FILES = 10  # Save up to MAX_FILES files. Set to 0 for None.
 PREFIX = "output" + "/"  # Folder to save files to.
 HIDE_OUTPUT = False  # Disables outputting the resulting item page.

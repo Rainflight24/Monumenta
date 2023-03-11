@@ -21,10 +21,20 @@ MAX_FILES = 10  # Save up to MAX_FILES files. Set to 0 for None.
 PREFIX = "output" + "/"  # Folder to save files to.
 HIDE_OUTPUT = False  # Disables outputting the resulting item page.
 
+# Constants:
+VOWELS = ("a", "e", "i", "o", "u")
+
 if CLIPBOARD:
     print("Importing pyperclip...")
     import pyperclip
 
+
+def format_a_an(string: str) -> str:
+    """Formats all ' a ' in string to follow 'an' rules."""
+    for vowel in VOWELS:
+        string = string.replace(f" a {vowel.lower()}", f" an {vowel.lower()}")
+        string = string.replace(f" a {vowel.upper()}", f" an {vowel.upper()}")
+    return string
 
 class Item:
     """
@@ -182,8 +192,11 @@ class Item:
     """A class representing a Monumenta item."""
 
     def __init__(self, raw_json: dict):
+        print(raw_json)
+
         self.name = raw_json["name"] if "name" in raw_json else None
-        self.type = raw_json["base_item"] if "base_item" in raw_json else None
+        self.base_item = raw_json["base_item"] if "base_item" in raw_json else None
+        self.type = raw_json["type"] if "type" in raw_json else None
         try:
             self.slot = Item.slotMap[
                 raw_json["type"].lower()] if "type" in raw_json else None
@@ -228,7 +241,7 @@ class Item:
         self.masterwork_data = {}
 
     def __str__(self) -> str:
-        return f"{self.name} ({Item.mw_stars(self.masterwork)})"
+        return self.name + Item.mw_stars(self.masterwork) if self.masterwork else ""
 
     def __lt__(self, other: Item) -> bool:
         mw1 = self.masterwork if self.masterwork else -1
@@ -240,18 +253,19 @@ class Item:
         return mw1 < mw2
 
     @staticmethod
-    def format_stat(string: str, remove: tuple[str] = None) -> str:
+    def format_stat(string: str, replace: dict[str, str] = None) -> str:
         """
         Replaces underscores and capitalizes a stat to format it.
 
-        Removes all instances of strings in remove.
+        For each pair in replace, replace all instances of
+        key with value.
         """
         string = string.lower()
 
         # Insensitively remove all strings in remove.
-        if remove:
-            for to_remove in remove:
-                string = string.replace(to_remove.lower(), "")
+        if replace:
+            for to_remove, to_replace in replace.items():
+                string = string.replace(to_remove.lower(), to_replace)
 
         # Capitalize each word. Remove underscores.
         string = string.replace("_", " ").split()
@@ -260,8 +274,9 @@ class Item:
 
     @staticmethod
     def format_list(pairs: dict[any, any],
-                    template: str,
-                    key_dict: dict = None) -> str:
+                    template: str = "Item/Attribute",
+                    key_dict: dict = None,
+                    replace: dict = None) -> str:
         """
         Converts a list of key, value pairs into template.
 
@@ -271,16 +286,13 @@ class Item:
         string = ""
         for key, value in pairs.items():
             string += ("{{" + template + "|" + Item.format_stat(
-                str(key_dict[key] if key_dict and key in key_dict else key)) +
-                "|" + str(value / 100 if "percent" in key or "power" in
-                          key else value) +
+                str(key_dict[key] if key_dict and key in key_dict else key),
+                replace = replace
+            )
+                + "|" + str(value / 100 if "percent" in key or "power" in
+                            key else value) +
                 ("|true" if "base" in key else "") + "}}\n")
         return string[:-1]  # Trim trailing newline.
-
-    def add_mw(self, other: Item):
-        """Appends masterwork data to this item."""
-        if other.masterwork is not None:
-            self.masterwork_data[other.masterwork] = other
 
     @staticmethod
     def mw_stars(cur: int, limit: int = None) -> str:
@@ -291,13 +303,18 @@ class Item:
         star_empty = "☆"
         return star_filled * cur + star_empty * (limit - cur)
 
+    def add_mw(self, other: Item):
+        """Appends masterwork data to this item."""
+        if other.masterwork is not None:
+            self.masterwork_data[other.masterwork] = other
+
     def to_wiki(self) -> str:
         """Converts an Item to a Template:Item."""
         # Maps Template:Item parameters to api paramenters.
         param_dict = {
             "name": self.name,
             "image": "",
-            "type": self.type,
+            "type": self.base_item,
             "slot": self.slot,
             "slot2": self.slot2,
             "region": self.region,
@@ -305,38 +322,49 @@ class Item:
             "location": self.loc,
             "enchantments": Item.format_list(self.enchantments, "Item/Enchantment"),
             "attributes": "{{Item/AttributeGroup|" + self.slot + "}}\n" +
-            Item.format_list(self.attributes, "Item/Attribute",
-                             Item.attributes) if self.slot else "",
+            Item.format_list(self.attributes,
+                            "Item/Attribute",
+                             Item.attributes,
+                             {"percent": "multiply", "flat": "add"})
+                             if self.slot else "",
             "charm_power": self.charm_power,
             "charm_class": self.charm_class,
         }
 
-        # Item template usage.
+        # Item template generator.
         string = "{{Item\n"
-
         for param, value in param_dict.items():
             string += f"|{param}="
             if value is not None:
                 string += str(value)
             string += "\n"
+        string += "}}\n"
 
-        # Article main body.
+        # Work In Progress template generator.
         string += (
-            "}}\n"
-            + "{{WorkInProgress|Autogenerated stub. Missing:\n"
+            "{{WorkInProgress|Autogenerated stub. Missing:\n"
             + "*Obtaining\n"
             + "*More details (if possible)\n"
             + "*Double check autogenerated text\n"
             + "*Double check enchant/attribute order\n"
             + "*Categories\n"
-            + "}}\n"
-            + "{{PAGENAME}}" + f" is a {self.tier if not None else ''}"
-            + f" {self.type if self.type else ''} found inside "
-            + f"[[{self.formatted_loc if self.formatted_loc else ''}]].\n"
-            + (("== Lore ==\n" + "''\"" + self.lore +
-                "\"''\n") if self.lore else "") + "== Obtaining ==\n")
+            + "}}\n")
 
-        # Article masterworking section, if neccessary.
+        # Article body generator.
+        # TODO - Needs generic obtaining details, masterwork base processing.
+        print(self)
+        string += ("{{PAGENAME}} is a "
+                   + (self.tier + " " if self.tier is not None else "")
+                   + ("pair of " if "Boots" in self.type else "")
+                   + (f"[[{self.type}]] " if self.type is not None else '')
+                   + "found inside "
+                   + f"[[{self.formatted_loc if self.formatted_loc else ''}]].\n"
+                   + (("== Lore ==\n"
+                   + "''\"" + self.lore +
+                       "\"''\n") if self.lore else "")
+                   + "== Obtaining ==\n")
+
+        # Article masterworking generator, if neccessary.
         if self.masterwork_data:
             # Get the highest masterwork level.
             max_mw = -1
@@ -352,7 +380,10 @@ class Item:
             string += ("== Masterworking ==\n" + '{|class="article-table"\n' +
                        "!'''Masterwork Level'''\n")
             for stat in stats:
-                stat = Item.format_stat(stat, ("percent", "base", "flat"))
+                stat = Item.format_stat(
+                    stat,
+                    {"percent": "", "base": "", "flat": ""
+                })
                 string += f"!'''{stat}'''\n"
             string += "|-\n"
 
@@ -374,6 +405,8 @@ class Item:
 
         # Categories are not implemented.
         string += "[[Category:NotImplemented]]\n"
+
+        string = format_a_an(string)
 
         return string
 

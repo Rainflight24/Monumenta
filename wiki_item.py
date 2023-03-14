@@ -36,6 +36,26 @@ def format_a_an(string: str) -> str:
         string = string.replace(f" a {vowel.upper()}", f" an {vowel.upper()}")
     return string
 
+
+class Stat:
+    """
+    Represents a Monumenta stat.
+    """
+    def __init__(self, name: str, magnitude: int, kind: str):
+        self.name = name
+        self.magnitude = magnitude
+        self.kind = kind
+        self.formatted_name = name
+
+        string = string.replace("_", " ").split()
+        string = [word.capitalize() for word in string]
+        return ' '.join(string)
+        
+    
+    def to_wiki(self) -> str:
+        """Converts a stat to its wiki representation."""
+        return "{{Item/" + "{self.kind}|{name}|{magnitude}" + "}}"
+
 class Item:
     """
     Represents an Item from the Monumenta API.
